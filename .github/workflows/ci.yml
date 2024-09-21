@@ -1,0 +1,86 @@
+name: CI/CD Laravel Vue.js on AWS Lightsail
+
+on:
+  push:
+    branches:
+      - cicd
+  pull_request:
+    branches:
+      - cicd
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Cache Composer dependencies
+      uses: actions/cache@v3
+      with:
+        path: vendor
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+        extensions: mbstring, pdo, pdo_mysql, bcmath, json, curl
+
+    - name: Install Composer dependencies
+      run: composer install --prefer-dist --no-progress --no-suggest --no-interaction
+
+    - name: Cache Node.js dependencies
+      uses: actions/cache@v3
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '22'
+
+    - name: Install Node.js dependencies
+      run: npm install
+
+    - name: Build assets
+      run: npm run build
+
+    - name: Set up .env file
+      run: cp .env.example .env
+
+    - name: Generate Laravel app key
+      run: php artisan key:generate
+
+    - name: Run tests with Pest
+      run: ./vendor/bin/pest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Deploy to AWS Lightsail
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.LIGHTSAIL_HOST }} # Assurez-vous que ce secret est correctement défini
+        username: ${{ secrets.LIGHTSAIL_USER }} # Utilisation correcte du secret
+        key: ${{ secrets.LIGHTSAIL_SSH_KEY }} # Utilisation correcte du secret
+        port: ${{ secrets.LIGHTSAIL_PORT }} # Utilisation correcte du secret
+        script: |
+          cd /var/www/html/test
+          git pull origin cicd
+          composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+          npm install --production
+          npm run prod
+          php artisan migrate --force
+          php artisan config:cache
+          php artisan route:cache
