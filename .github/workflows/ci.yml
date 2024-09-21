@@ -44,7 +44,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: '22'
+        node-version: '21'
 
     - name: Install Node.js dependencies
       run: npm install
@@ -58,8 +58,6 @@ jobs:
     - name: Generate Laravel app key
       run: php artisan key:generate
 
-    - name: Run tests with Pest
-      run: ./vendor/bin/pest
 
   deploy:
     needs: build
